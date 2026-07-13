@@ -18,6 +18,8 @@
   const LABEL_FADE_AT = 2.4;      // region/sea display names fade past this
   const SEA_TIER_AT = { 1: 0, 2: 1.4, 3: 2.6 };
   const SEA_TIER_MAX = { 1: 3.2, 2: Infinity, 3: Infinity };
+  // every zoom threshold at which a label's opacity changes (for LOD caching)
+  const LABEL_BREAKS = [1.4, 2.4, 2.6, 3.2];
 
   const MARKER_GLYPHS = {
     capital: 'M0,-7 L1.9,-1.9 L7,0 L1.9,1.9 L0,7 L-1.9,1.9 L-7,0 L-1.9,-1.9 Z',
@@ -92,14 +94,21 @@
       const svg = el('svg', { class: 'wmap', width: '100%', height: '100%' }, this.container);
       this.svg = svg;
 
+      // Touch devices (and low-core machines) can't afford SVG filters that
+      // re-rasterize every zoom frame — see grain/shadow handling below.
+      const CHEAP = /[?&]lowfx=1/.test(location.search) ||
+        (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) ||
+        (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 6);
+      this.cheap = CHEAP;
+
       const defs = el('defs', {}, svg);
-      // parchment grain
-      const noise = el('filter', { id: 'grain', x: '0%', y: '0%', width: '100%', height: '100%' }, defs);
-      el('feTurbulence', { type: 'fractalNoise', baseFrequency: '0.9', numOctaves: '2', result: 'n' }, noise);
-      el('feColorMatrix', { in: 'n', type: 'matrix', values: '0 0 0 0 0.35  0 0 0 0 0.28  0 0 0 0 0.18  0 0 0 0.5 0' }, noise);
-      // soft shadow under the landmass
-      const sh = el('filter', { id: 'landshadow', x: '-10%', y: '-10%', width: '120%', height: '120%' }, defs);
-      el('feDropShadow', { dx: '0', dy: '4', stdDeviation: '7', 'flood-color': '#0d2b33', 'flood-opacity': '0.45' }, sh);
+      // parchment grain (desktop only — feTurbulence is too costly to re-raster
+      // per frame on mobile, and at 0.14 opacity it's invisible on a phone)
+      if (!CHEAP) {
+        const noise = el('filter', { id: 'grain', x: '0%', y: '0%', width: '100%', height: '100%' }, defs);
+        el('feTurbulence', { type: 'fractalNoise', baseFrequency: '0.9', numOctaves: '2', result: 'n' }, noise);
+        el('feColorMatrix', { in: 'n', type: 'matrix', values: '0 0 0 0 0.35  0 0 0 0 0.28  0 0 0 0 0.18  0 0 0 0.5 0' }, noise);
+      }
       // sea gradient
       const grad = el('radialGradient', { id: 'seaGrad', cx: '50%', cy: '42%', r: '75%' }, defs);
       el('stop', { offset: '0%', 'stop-color': '#88aeb4' }, grad);
@@ -113,7 +122,7 @@
       const fclip = el('clipPath', { id: 'frameClip' }, defs);
       el('rect', { x: F.x, y: F.y, width: F.w, height: F.h }, fclip);
 
-      this.vp = el('g', {}, svg);
+      this.vp = el('g', { style: 'will-change:transform' }, svg);
       // everything on the chart is clipped to the frame; the world "ends" here
       this.world = el('g', { 'clip-path': 'url(#frameClip)' }, this.vp);
 
@@ -124,8 +133,17 @@
       // organic coastlines, computed once (shared borders stay identical)
       const RPOLYS = GEO.REGIONS.map((r) => r.polys.map((p) => roughen(p, true)));
 
+      // --- landmass shadow ---
+      // A static offset silhouette instead of an feDropShadow: plain vector, so
+      // it scales for free every frame (a blur filter would re-rasterize and
+      // stutter on mobile). Gives the same sense of depth.
+      const shadow = el('g', { style: 'pointer-events:none', transform: 'translate(3 6)', opacity: '0.3' }, this.world);
+      for (const rp of RPOLYS)
+        for (const poly of rp)
+          el('polygon', { points: pts(poly), fill: '#0d2b33' }, shadow);
+
       // --- land ---
-      const land = el('g', { filter: 'url(#landshadow)' }, this.world);
+      const land = el('g', {}, this.world);
       // pale "shallows" halo drawn under the fills
       for (const rp of RPOLYS)
         for (const poly of rp)
@@ -147,10 +165,12 @@
         });
         this.regionEls.push(g);
       });
-      // parchment grain over the land only (subtle)
-      const grain = el('g', { style: 'pointer-events:none', opacity: '0.14', filter: 'url(#grain)' }, this.world);
-      for (const rp of RPOLYS)
-        for (const poly of rp) el('polygon', { points: pts(poly) }, grain);
+      // parchment grain over the land only (subtle; desktop only — see CHEAP)
+      if (!CHEAP) {
+        const grain = el('g', { style: 'pointer-events:none', opacity: '0.14', filter: 'url(#grain)' }, this.world);
+        for (const rp of RPOLYS)
+          for (const poly of rp) el('polygon', { points: pts(poly) }, grain);
+      }
 
       // --- water features ---
       const waterG = el('g', { style: 'pointer-events:none' }, this.world);
@@ -396,10 +416,18 @@
           m.el.classList.toggle('hidden', !show);
         }
       }
-      this.regionLabelG.style.opacity = z > LABEL_FADE_AT ? 0.16 : 0.85;
-      for (const s of this.seaLabels) {
-        const on = z >= SEA_TIER_AT[s.tier] && z <= SEA_TIER_MAX[s.tier];
-        s.el.style.opacity = on ? 0.75 : 0;
+      // Label opacities only change when zoom crosses a threshold — writing
+      // them every frame forces needless style recalc. Bucket z by every
+      // label breakpoint and recompute only when the bucket changes.
+      let bucket = 0;
+      for (const bp of LABEL_BREAKS) if (z >= bp) bucket++;
+      if (bucket !== this._labelBucket) {
+        this._labelBucket = bucket;
+        this.regionLabelG.style.opacity = z > LABEL_FADE_AT ? 0.16 : 0.85;
+        for (const s of this.seaLabels) {
+          const on = z >= SEA_TIER_AT[s.tier] && z <= SEA_TIER_MAX[s.tier];
+          s.el.style.opacity = on ? 0.75 : 0;
+        }
       }
     }
 
