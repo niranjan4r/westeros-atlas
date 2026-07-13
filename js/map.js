@@ -94,21 +94,12 @@
       const svg = el('svg', { class: 'wmap', width: '100%', height: '100%' }, this.container);
       this.svg = svg;
 
-      // Touch devices (and low-core machines) can't afford SVG filters that
-      // re-rasterize every zoom frame — see grain/shadow handling below.
-      const CHEAP = /[?&]lowfx=1/.test(location.search) ||
-        (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) ||
-        (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 6);
-      this.cheap = CHEAP;
-
+      // No SVG filters are used anywhere: a filtered element can't be cached as
+      // a GPU layer, so anything inside the per-frame-scaled viewport would be
+      // re-rasterized every zoom frame — slow on mobile, and feTurbulence noise
+      // visibly "swims" under transform. Depth/texture are done with plain
+      // vector instead (see the static landmass shadow below).
       const defs = el('defs', {}, svg);
-      // parchment grain (desktop only — feTurbulence is too costly to re-raster
-      // per frame on mobile, and at 0.14 opacity it's invisible on a phone)
-      if (!CHEAP) {
-        const noise = el('filter', { id: 'grain', x: '0%', y: '0%', width: '100%', height: '100%' }, defs);
-        el('feTurbulence', { type: 'fractalNoise', baseFrequency: '0.9', numOctaves: '2', result: 'n' }, noise);
-        el('feColorMatrix', { in: 'n', type: 'matrix', values: '0 0 0 0 0.35  0 0 0 0 0.28  0 0 0 0 0.18  0 0 0 0.5 0' }, noise);
-      }
       // sea gradient
       const grad = el('radialGradient', { id: 'seaGrad', cx: '50%', cy: '42%', r: '75%' }, defs);
       el('stop', { offset: '0%', 'stop-color': '#88aeb4' }, grad);
@@ -122,7 +113,7 @@
       const fclip = el('clipPath', { id: 'frameClip' }, defs);
       el('rect', { x: F.x, y: F.y, width: F.w, height: F.h }, fclip);
 
-      this.vp = el('g', { style: 'will-change:transform' }, svg);
+      this.vp = el('g', {}, svg);
       // everything on the chart is clipped to the frame; the world "ends" here
       this.world = el('g', { 'clip-path': 'url(#frameClip)' }, this.vp);
 
@@ -165,13 +156,6 @@
         });
         this.regionEls.push(g);
       });
-      // parchment grain over the land only (subtle; desktop only — see CHEAP)
-      if (!CHEAP) {
-        const grain = el('g', { style: 'pointer-events:none', opacity: '0.14', filter: 'url(#grain)' }, this.world);
-        for (const rp of RPOLYS)
-          for (const poly of rp) el('polygon', { points: pts(poly) }, grain);
-      }
-
       // --- water features ---
       const waterG = el('g', { style: 'pointer-events:none' }, this.world);
       for (const lake of GEO.LAKES)
@@ -423,10 +407,12 @@
       for (const bp of LABEL_BREAKS) if (z >= bp) bucket++;
       if (bucket !== this._labelBucket) {
         this._labelBucket = bucket;
-        this.regionLabelG.style.opacity = z > LABEL_FADE_AT ? 0.16 : 0.85;
+        // fill-opacity (not opacity) — see the note in style.css: opacity
+        // transitions flash a black compositing layer at LOD thresholds.
+        this.regionLabelG.style.fillOpacity = z > LABEL_FADE_AT ? 0.16 : 0.85;
         for (const s of this.seaLabels) {
           const on = z >= SEA_TIER_AT[s.tier] && z <= SEA_TIER_MAX[s.tier];
-          s.el.style.opacity = on ? 0.75 : 0;
+          s.el.style.fillOpacity = on ? 0.75 : 0;
         }
       }
     }

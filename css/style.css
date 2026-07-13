@@ -117,20 +117,26 @@ main { position: relative; height: calc(100% - 58px); }
 .wmap.grabbing { cursor: grabbing; }
 
 /* ------------------------------------------------ map text ------ */
+/* Labels fade via fill-opacity, NOT opacity: animating `opacity` promotes the
+ * element to a compositing layer whose backing buffer flashes black for a frame
+ * (visible when zooming back and forth across an LOD threshold). fill-opacity
+ * repaints in place with no layer, so it fades cleanly. */
 .region-label {
   font-family: var(--display);
   fill: #4a3826;
   letter-spacing: 0.45em;
-  opacity: 0.85;
-  transition: opacity 0.35s;
 }
-.region-labels { transition: opacity 0.35s; }
+.region-labels {
+  fill-opacity: 0.85;
+  transition: fill-opacity 0.35s;
+}
 .sea-label {
   font-family: var(--serif);
   font-style: italic;
   fill: #1f4650;
   letter-spacing: 0.28em;
-  transition: opacity 0.4s;
+  fill-opacity: 0;
+  transition: fill-opacity 0.4s;
 }
 .compass-n { font-family: var(--display); font-size: 15px; fill: #e9e2cd; }
 .cart-title { font-family: var(--display); font-size: 22px; letter-spacing: 4px; fill: var(--ink); }
@@ -142,7 +148,9 @@ main { position: relative; height: calc(100% - 58px); }
 .region:hover polygon { filter: brightness(1.06) saturate(1.15); }
 
 /* ------------------------------------------------- markers ------ */
-.marker { cursor: pointer; transition: opacity 0.25s; }
+/* Instant toggle (no opacity transition) — animating opacity would flash a
+ * black compositing layer as tier markers pop in, same as the labels. */
+.marker { cursor: pointer; }
 .marker.hidden { opacity: 0; pointer-events: none; }
 .marker-glyph {
   fill: #3d2c1e;
