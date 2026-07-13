@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>Westeros Atlas — An Interactive Map of the Seven Kingdoms</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🗺️</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=EB+Garamond:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <header>
+    <div class="brand">WESTEROS ATLAS<small>an interactive map of the Seven Kingdoms</small></div>
+    <div class="search-wrap">
+      <input id="search" type="text" placeholder="Search for a castle, city, or ruin…" autocomplete="off" spellcheck="false" />
+      <div id="search-results"></div>
+    </div>
+  </header>
+
+  <main>
+    <div id="map"></div>
+
+    <div class="zoom-controls">
+      <button id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
+      <button id="zoom-out" title="Zoom out" aria-label="Zoom out">−</button>
+      <button id="zoom-fit" title="Fit the whole realm" aria-label="Reset view">⌂</button>
+      <div id="zoom-readout">1.0×</div>
+    </div>
+
+    <div class="legend">
+      <h4>LEGEND</h4>
+      <div class="lrow"><svg width="14" height="14" viewBox="-8 -8 16 16"><path d="M0,-7 L1.9,-1.9 L7,0 L1.9,1.9 L0,7 L-1.9,1.9 L-7,0 L-1.9,-1.9 Z" fill="#7c1f1f"/></svg> Great seat</div>
+      <div class="lrow"><svg width="14" height="14" viewBox="-8 -8 16 16"><rect x="-4.5" y="-4.5" width="9" height="9" fill="#37424e"/></svg> City</div>
+      <div class="lrow"><svg width="14" height="14" viewBox="-8 -8 16 16"><path d="M-4.5,4 V-2 H-2.7 V-4.5 H-1.2 V-2 H1.2 V-4.5 H2.7 V-2 H4.5 V4 Z" fill="#3d2c1e"/></svg> Castle</div>
+      <div class="lrow"><svg width="14" height="14" viewBox="-8 -8 16 16"><circle r="3.2" fill="#3d2c1e"/></svg> Town</div>
+      <div class="lrow"><svg width="14" height="14" viewBox="-8 -8 16 16"><path d="M-4.5,4 V-2 H-2.7 V-4.5 H-1.2 V-2 H1.2 V-4.5 H2.7 V-2 H4.5 V4 Z" fill="#8a7a64" stroke-dasharray="2 1.5"/></svg> Ruin</div>
+      <div class="hint">Zoom in to reveal smaller places.<br/>Click any place or realm for its history.</div>
+    </div>
+
+    <aside id="panel">
+      <button id="panel-close" title="Close" aria-label="Close panel">✕</button>
+      <div id="panel-body"></div>
+    </aside>
+
+    <div id="tooltip"></div>
+
+    <footer class="disclaimer">
+      An unofficial fan work — not affiliated with or endorsed by George R.R. Martin, HBO, or Warner&nbsp;Bros.
+    </footer>
+  </main>
+
+  <script src="js/data/regions.js"></script>
+  <script src="js/data/places.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/map.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
